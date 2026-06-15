@@ -55,10 +55,11 @@
   #knob { position: absolute; left: 35px; top: 35px; width: 60px; height: 60px; border-radius: 50%; background: #1e2a30cc; }
 
   /* Right side buttons */
-  .rbtn { position: absolute; right: calc(22px + env(safe-area-inset-right)); width: 84px; height: 84px; border-radius: 50%;
-    border: 2px solid #1e2a30; background: #ffffffcc; font-size: 14px; font-weight: 800; cursor: pointer; touch-action: none; }
+  .rbtn { position: absolute; right: calc(22px + env(safe-area-inset-right)); width: 112px; height: 112px; border-radius: 50%;
+    border: 2px solid #1e2a30; background: #ffffffcc; font-size: 18px; font-weight: 800; cursor: pointer; touch-action: none; }
   #jumpBtn { bottom: calc(30px + env(safe-area-inset-bottom)); }
-  #throwBtn { bottom: calc(128px + env(safe-area-inset-bottom)); background: #e8413a; color: #fff; display: none; }
+  #jumpBtn.on { background: #1e2a30; color: #fff; }
+  #throwBtn { bottom: calc(160px + env(safe-area-inset-bottom)); background: #e8413a; color: #fff; display: none; }
   .rbtn:active { transform: scale(.93); }
 
   /* Overlay */
@@ -276,9 +277,13 @@ const lookEnd = (e) => { if (lookId === e.pointerId) lookId = null; };
 gl.addEventListener("pointerup", lookEnd);
 gl.addEventListener("pointercancel", lookEnd);
 
-document.getElementById("jumpBtn").addEventListener("pointerdown", (e) => {
+// JUMP toggles continuous auto-jump: while on, the player hops whenever grounded.
+let autoJump = false;
+const jumpBtn = document.getElementById("jumpBtn");
+jumpBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
-  if (player.onGround){ player.vy = JUMP_V; player.onGround = false; }
+  autoJump = !autoJump;
+  jumpBtn.classList.toggle("on", autoJump);
 });
 
 // Throw based on where you look (shift-lock aiming):
@@ -328,9 +333,10 @@ function loop(now){
   player.z += mvz * MOVE_SPEED * dt;
   player.x = Math.max(-WORLD, Math.min(WORLD, player.x));
   player.z = Math.max(-WORLD, Math.min(WORLD, player.z));
-  // gravity / jump
+  // gravity / jump (auto-jump re-hops the moment we touch ground)
   player.vy -= GRAVITY * dt; player.y += player.vy * dt;
   if (player.y <= 0){ player.y = 0; player.vy = 0; player.onGround = true; }
+  if (autoJump && player.onGround){ player.vy = JUMP_V; player.onGround = false; }
 
   // place my mesh; shift-lock: always face where the camera looks
   me.position.set(player.x, player.y, player.z);
