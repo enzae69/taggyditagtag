@@ -9,11 +9,18 @@ schneller**. Wen das Schweinchen mit der Karte erwischt, **der verliert**.
 
 ## Steuerung
 
-- **Joystick** (links unten): laufen
+- **Joystick** (links unten): laufen (relativ zur Blickrichtung)
 - **Wischen** (auf der 3D-Ansicht): Kamera drehen / umschauen
+- **Shift-Lock**: dein Charakter schaut immer dorthin, wo die Kamera schaut
 - **JUMP** (rechts unten): springen
-- **WURF zeichnen** (rechts): antippen, dann mit dem Finger die **Flugkurve**
-  auf den Boden malen und loslassen — die Karte fliegt diese Linie als 3D-Bogen.
+- **WERFEN** (rechts): Wurf nach **Blickrichtung** — schaust du genau auf den
+  Spieler, fliegt die Karte gerade; schaust du nach oben/links/rechts, fliegt
+  sie kurvig in diese Richtung zum Spieler (und höher, je weiter du hochschaust).
+
+### Solo gegen Bots
+
+In der Lobby auf **🤖 PRACTISE — gegen Bots** tippen: startet sofort ein Match
+gegen einen KI-Gegner, der vor dem Schweinchen flieht und automatisch wirft.
 
 ## Brauche ich Firebase / Supabase?
 

@@ -117,10 +117,17 @@ class Game {
     };
   }
 
-  // A player throws by drawing a path of ground points {x,z}.
-  throwCard(socketId, rawPts) {
+  // A player throws with a curved path of ground points {x,z} plus a loft
+  // factor (how high it arcs). Accepts either a bare points array or
+  // { path, loft } for backward compatibility.
+  throwCard(socketId, payload) {
     if (this.over || this.card.inFlight) return;
     if (this.card.owner !== socketId) return;
+    let rawPts = payload, loft = 1;
+    if (payload && !Array.isArray(payload)) {
+      rawPts = payload.path;
+      loft = clamp(Number(payload.loft) || 1, 0.4, 3);
+    }
     if (!Array.isArray(rawPts) || rawPts.length < 2) return;
 
     // Start the path at the thrower, then follow the drawn ground points.
@@ -141,6 +148,7 @@ class Game {
     if (total < 1) return;
 
     this.card.path = { pts, cum, total };
+    this.card.loft = loft;
     this.card.dist = 0;
     this.card.inFlight = true;
     this.broadcast("thrown", { path: pts, owner: socketId });
@@ -158,7 +166,7 @@ class Game {
     const frac = d / total;
     return {
       x: a.x + (b.x - a.x) * t,
-      y: CARD_REST_Y + Math.sin(frac * Math.PI) * ARC_HEIGHT,
+      y: CARD_REST_Y + Math.sin(frac * Math.PI) * ARC_HEIGHT * (this.card.loft || 1),
       z: a.z + (b.z - a.z) * t,
     };
   }
