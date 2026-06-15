@@ -24,7 +24,23 @@ Würfe und zeichnen den vom Server geschickten Zustand.
 - **Schweinchen** wird sekündlich schneller (`PIG_ACCEL` in `server.js`).
 - Autoritativer Server: keine Cheats möglich, der Server entscheidet alles.
 
-## Starten
+## Online spielen (Live-Link für Safari & Co.)
+
+Das Projekt ist deploy-fertig für **Render.com** (kostenlos, WebSockets/Safari):
+
+1. Geh auf <https://render.com> und logge dich mit GitHub ein.
+2. **New +** → **Blueprint** → wähle dieses Repo (`taggyditagtag`).
+   Render liest `render.yaml` automatisch.
+3. **Apply** klicken. Nach ~1–2 Minuten bekommst du eine Adresse wie
+   `https://taggytag.onrender.com`.
+
+Diese Adresse kannst du im **Safari** (Handy oder Mac) öffnen und teilen — zwei
+Leute wählen denselben Server (z. B. „EU 1"), dann startet das Match.
+
+> Hinweis: Im kostenlosen Render-Tier „schläft" der Server nach Inaktivität —
+> der erste Aufruf danach dauert ~30 s, dann läuft alles normal.
+
+## Lokal starten / entwickeln
 
 ```bash
 npm install
