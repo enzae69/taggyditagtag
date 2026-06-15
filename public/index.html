@@ -332,9 +332,12 @@ let lastT = 0, sendAcc = 0;
 function loop(now){
   const dt = Math.min(0.05, (now - lastT)/1000); lastT = now;
 
-  // movement relative to camera yaw
+  // movement relative to camera yaw.
+  // The camera sits behind the player looking along +fwd, so screen-right in
+  // world space is cross(up, localZ) = (-cos, sin) — the negative of the naive
+  // right vector. Using the naive one flips left/right.
   const fwd = { x: Math.sin(yaw), z: Math.cos(yaw) };
-  const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+  const right = { x: -Math.cos(yaw), z: Math.sin(yaw) };
   // joystick: y up = forward (away from camera)
   const mvx = right.x*joyVec.x - fwd.x*joyVec.y;
   const mvz = right.z*joyVec.x - fwd.z*joyVec.y;
