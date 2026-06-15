@@ -265,7 +265,9 @@ const gl = document.getElementById("glcanvas");
 gl.addEventListener("pointerdown", (e) => { lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; });
 gl.addEventListener("pointermove", (e) => {
   if (lookId !== e.pointerId) return;
-  yaw   += (e.clientX - lookX) * 0.005;
+  // forward = (sin yaw, cos yaw): raising yaw turns the view LEFT, so to make
+  // drag-right look right we lower yaw. Drag-up (dy<0) lowers pitch = look up.
+  yaw   -= (e.clientX - lookX) * 0.005;
   pitch += (e.clientY - lookY) * 0.005;
   pitch = Math.max(-0.15, Math.min(1.1, pitch));
   lookX = e.clientX; lookY = e.clientY;
