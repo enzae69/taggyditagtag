@@ -26,6 +26,9 @@
     font-size: 19px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
   .server-btn:active { transform: scale(.96); }
   .server-btn small { font-weight: 400; opacity: .6; font-size: 12px; }
+  #practiseBtn { margin-top: 6px; width: 100%; max-width: 440px; background: #e8413a; color: #fff;
+    border: 2px solid #1e2a30; border-radius: 14px; padding: 15px; font-size: 18px; font-weight: 800; cursor: pointer; }
+  #practiseBtn:active { transform: scale(.96); }
 
   /* Waiting */
   #waiting { flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
@@ -76,6 +79,7 @@
     schneller. Wen es mit der Karte erwischt, verliert.</p>
   <strong>Server wählen</strong>
   <div class="servers" id="servers"></div>
+  <button id="practiseBtn">🤖 PRACTISE — gegen Bots</button>
 </div>
 
 <div id="waiting" class="screen">
@@ -124,6 +128,7 @@ socket.on("lobby", (list) => {
 socket.on("waiting", (d) => { document.getElementById("waitText").textContent =
   `Server ${d.server} · warte auf einen zweiten Spieler…`; show("waiting"); });
 document.getElementById("cancelBtn").onclick = () => { socket.emit("leaveQueue"); show("lobby"); };
+document.getElementById("practiseBtn").onclick = () => socket.emit("joinPractice");
 
 // ===========================================================================
 // 3D game

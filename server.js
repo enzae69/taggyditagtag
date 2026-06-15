@@ -27,6 +27,7 @@ const ARC_HEIGHT = 4;                  // how high the thrown card arcs
 const PIG_BASE_SPEED = 3.2;            // pig speed at round start
 const PIG_ACCEL = 0.95;                // extra units/sec added per second
 const HIT_RADIUS = 1.7;                // pig <-> card catch distance
+const BOT_SPEED = 6.8;                 // practice bot movement speed
 
 const SERVER_NAMES = ["EU 1", "EU 2", "EU 3", "EU 4"];
 
@@ -35,6 +36,10 @@ const servers = new Map();
 for (const name of SERVER_NAMES) {
   servers.set(name, { name, queue: [], games: new Map() });
 }
+// Hidden bucket for solo practice matches (1 human + 1 bot); not shown in lobby.
+servers.set("PRACTISE", { name: "PRACTISE", queue: [], games: new Map() });
+
+const isBot = (id) => typeof id === "string" && id.startsWith("BOT-");
 
 function lobbyInfo() {
   return SERVER_NAMES.map((name) => {
@@ -78,6 +83,11 @@ class Game {
 
     this.over = false;
     this.lastTick = Date.now();
+
+    // Practice-bot AI state.
+    this.bots = players.filter(isBot);
+    this.botAI = {};
+    for (const id of this.bots) this.botAI[id] = { throwAt: 0 };
 
     for (const id of players) {
       const sock = io.sockets.sockets.get(id);
@@ -153,11 +163,55 @@ class Game {
     };
   }
 
+  // Practice bot: flee the pig and throw the card away (dodging the pig).
+  updateBots(dt, now) {
+    for (const id of this.bots) {
+      const p = this.pos[id];
+      // run away from the pig, with a gentle pull toward the centre
+      const ax = p.x - this.pig.x, az = p.z - this.pig.z;
+      const al = Math.hypot(ax, az) || 1;
+      let nx = p.x + (ax / al) * BOT_SPEED * dt - p.x * 0.05 * dt;
+      let nz = p.z + (az / al) * BOT_SPEED * dt - p.z * 0.05 * dt;
+      this.pos[id] = {
+        x: clamp(nx, -WORLD_HALF, WORLD_HALF),
+        y: 0,
+        z: clamp(nz, -WORLD_HALF, WORLD_HALF),
+      };
+
+      if (this.card.owner === id && !this.card.inFlight) {
+        const ai = this.botAI[id];
+        if (!ai.throwAt) ai.throwAt = now + 450 + Math.random() * 650;
+        if (now >= ai.throwAt) {
+          ai.throwAt = 0;
+          this.throwCard(id, this.botDodgePath(id));
+        }
+      } else {
+        this.botAI[id].throwAt = 0;
+      }
+    }
+  }
+
+  // A curved path from the bot toward the other player, bowed away from the pig.
+  botDodgePath(id) {
+    const from = this.pos[id];
+    const target = this.pos[this.otherPlayer(id)];
+    const mid = { x: (from.x + target.x) / 2, z: (from.z + target.z) / 2 };
+    let ax = mid.x - this.pig.x, az = mid.z - this.pig.z;
+    const al = Math.hypot(ax, az) || 1;
+    const control = {
+      x: clamp(mid.x + (ax / al) * 9, -WORLD_HALF, WORLD_HALF),
+      z: clamp(mid.z + (az / al) * 9, -WORLD_HALF, WORLD_HALF),
+    };
+    return [control, { x: target.x, z: target.z }];
+  }
+
   tick() {
     const now = Date.now();
     const dt = (now - this.lastTick) / 1000;
     this.lastTick = now;
     if (this.over) return;
+
+    if (this.bots.length) this.updateBots(dt, now);
 
     const elapsed = (now - this.roundStart) / 1000;
     this.pigSpeed = PIG_BASE_SPEED + PIG_ACCEL * elapsed;
@@ -246,6 +300,7 @@ function tryMatch(serverName) {
 
 /** @type {Map<string, {server:string|null, game:Game|null}>} */
 const sockState = new Map();
+let botCounter = 0;
 
 io.on("connection", (socket) => {
   sockState.set(socket.id, { server: null, game: null });
@@ -259,6 +314,16 @@ io.on("connection", (socket) => {
     servers.get(name).queue.push(socket.id);
     socket.emit("waiting", { server: name });
     tryMatch(name);
+  });
+
+  socket.on("joinPractice", () => {
+    const st = sockState.get(socket.id);
+    if (st.server || st.game) return;
+    const botId = "BOT-" + (++botCounter);
+    const game = new Game("PRACTISE", [socket.id, botId]);
+    servers.get("PRACTISE").games.set(game.id, game);
+    st.game = game;
+    st.server = "PRACTISE";
   });
 
   socket.on("leaveQueue", () => {
