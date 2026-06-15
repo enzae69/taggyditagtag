@@ -269,7 +269,7 @@ gl.addEventListener("pointermove", (e) => {
   // drag-right look right we lower yaw. Drag-up (dy<0) lowers pitch = look up.
   yaw   -= (e.clientX - lookX) * 0.005;
   pitch += (e.clientY - lookY) * 0.005;
-  pitch = Math.max(-0.15, Math.min(1.1, pitch));
+  pitch = Math.max(-0.5, Math.min(1.4, pitch));
   lookX = e.clientX; lookY = e.clientY;
 });
 const lookEnd = (e) => { if (lookId === e.pointerId) lookId = null; };

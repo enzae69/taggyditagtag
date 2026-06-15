@@ -21,7 +21,7 @@ const START_R = { x: 0, y: 0, z: 16 };
 const PIG_START = { x: 0, y: 1.2, z: 0 };
 
 const TICK_MS = 1000 / 30;
-const CARD_SPEED = 16;                 // units/sec along the drawn path
+const CARD_SPEED = 26;                 // units/sec along the drawn path
 const CARD_REST_Y = 1.4;               // height the card floats at a player
 const ARC_HEIGHT = 4;                  // how high the thrown card arcs
 const PIG_BASE_SPEED = 3.2;            // pig speed at round start
@@ -151,7 +151,25 @@ class Game {
     this.card.loft = loft;
     this.card.dist = 0;
     this.card.inFlight = true;
+    this.card.target = this.otherPlayer(socketId); // home onto this player at the end
     this.broadcast("thrown", { path: pts, owner: socketId });
+  }
+
+  // After the curve, steer the final path point onto the target player's live
+  // position so the card homes in even while they move.
+  retargetCardEnd() {
+    const path = this.card.path;
+    const tgt = this.pos[this.card.target];
+    if (!path || !tgt) return;
+    const last = path.pts.length - 1;
+    path.pts[last] = { x: tgt.x, z: tgt.z };
+    let total = 0;
+    path.cum[0] = 0;
+    for (let i = 1; i < path.pts.length; i++) {
+      total += Math.hypot(path.pts[i].x - path.pts[i - 1].x, path.pts[i].z - path.pts[i - 1].z);
+      path.cum[i] = total;
+    }
+    path.total = total;
   }
 
   cardPointAt(dist) {
@@ -225,6 +243,7 @@ class Game {
     this.pigSpeed = PIG_BASE_SPEED + PIG_ACCEL * elapsed;
 
     if (this.card.inFlight && this.card.path) {
+      this.retargetCardEnd();
       this.card.dist += CARD_SPEED * dt;
       if (this.card.dist >= this.card.path.total) {
         // Landed: possession passes to the other player.
