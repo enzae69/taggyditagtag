@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>TaggyTag</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #cdd6db;
+    color: #1e2a30;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+  }
+  .screen { display: none; width: 100%; height: 100%; }
+  .screen.active { display: flex; }
+
+  /* Lobby */
+  #lobby { flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 20px; }
+  h1 { font-size: 44px; margin: 0 0 4px; letter-spacing: 2px; }
+  .subtitle { opacity: .7; margin: 0 0 14px; text-align: center; max-width: 460px; }
+  .servers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: 100%; max-width: 460px; }
+  .server-btn {
+    background: #fff; border: 2px solid #1e2a30; border-radius: 14px;
+    padding: 18px; font-size: 20px; font-weight: 700; cursor: pointer;
+    display: flex; flex-direction: column; gap: 4px; transition: transform .08s;
+  }
+  .server-btn:active { transform: scale(.96); }
+  .server-btn small { font-weight: 400; opacity: .6; font-size: 13px; }
+
+  /* Waiting */
+  #waiting { flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+  .spinner {
+    width: 46px; height: 46px; border: 5px solid #1e2a3033; border-top-color: #e8413a;
+    border-radius: 50%; animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  button.ghost {
+    background: none; border: 2px solid #1e2a30; border-radius: 10px;
+    padding: 10px 18px; font-size: 15px; cursor: pointer;
+  }
+
+  /* Game */
+  #game { position: relative; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #hud {
+    position: absolute; top: 10px; left: 0; right: 0; display: flex;
+    justify-content: space-between; padding: 0 16px; font-weight: 700; pointer-events: none;
+  }
+  #hud .pill { background: #ffffffcc; border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  #hint {
+    position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
+    font-size: 15px; opacity: .8; pointer-events: none;
+  }
+
+  /* Overlay (game over) */
+  #overlay { position: absolute; inset: 0; background: #cdd6dbee; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; display: none; }
+  #overlay.active { display: flex; }
+  #overlay h2 { font-size: 40px; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div id="lobby" class="screen active">
+  <h1>TAGGYTAG</h1>
+  <p class="subtitle">Schweinchen in der Mitte. Wirf die Karte gekurvt zum Gegner &mdash;
+    aber das Schweinchen wird jede Sekunde schneller. Wen es mit der Karte erwischt, der verliert.</p>
+  <strong>Server wählen</strong>
+  <div class="servers" id="servers"></div>
+</div>
+
+<!-- WAITING -->
+<div id="waiting" class="screen">
+  <div class="spinner"></div>
+  <div id="waitText">Warte auf einen zweiten Spieler…</div>
+  <button class="ghost" id="cancelBtn">Abbrechen</button>
+</div>
+
+<!-- GAME -->
+<div id="game" class="screen">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <span class="pill" id="rolePill">…</span>
+    <span class="pill" id="speedPill">🐷 0</span>
+    <span class="pill" id="timePill">0s</span>
+  </div>
+  <div id="hint"></div>
+  <div id="overlay">
+    <h2 id="overTitle"></h2>
+    <div id="overSub"></div>
+    <button class="ghost" id="againBtn">Zurück zur Lobby</button>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+
+const screens = {
+  lobby: document.getElementById("lobby"),
+  waiting: document.getElementById("waiting"),
+  game: document.getElementById("game"),
+};
+function show(name) {
+  for (const k in screens) screens[k].classList.toggle("active", k === name);
+}
+
+// ---- Lobby ----------------------------------------------------------------
+const serversEl = document.getElementById("servers");
+socket.on("lobby", (list) => {
+  serversEl.innerHTML = "";
+  for (const s of list) {
+    const b = document.createElement("button");
+    b.className = "server-btn";
+    b.innerHTML = `${s.name}<small>${s.players} online · ${s.waiting} warten</small>`;
+    b.onclick = () => socket.emit("joinServer", s.name);
+    serversEl.appendChild(b);
+  }
+});
+
+socket.on("waiting", (d) => {
+  document.getElementById("waitText").textContent =
+    `Server ${d.server} · warte auf einen zweiten Spieler…`;
+  show("waiting");
+});
+document.getElementById("cancelBtn").onclick = () => {
+  socket.emit("leaveQueue");
+  show("lobby");
+};
+
+// ---- Game state -----------------------------------------------------------
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const FIELD = { w: 1000, h: 600 };
+let view = { scale: 1, ox: 0, oy: 0 };
+let mySide = null;
+let myId = null;
+let state = { pig: { x: 500, y: 300 }, card: { x: 110, y: 300, owner: null, inFlight: false }, pigSpeed: 0, elapsed: 0 };
+let lastThrow = null; // {from,c,to,owner,age}
+const PLAYER_L = { x: 110, y: 300 };
+const PLAYER_R = { x: 890, y: 300 };
+let myControl = null; // current aim while dragging
+
+function resize() {
+  cv.width = cv.clientWidth * devicePixelRatio;
+  cv.height = cv.clientHeight * devicePixelRatio;
+  const s = Math.min(cv.width / FIELD.w, cv.height / FIELD.h);
+  view.scale = s;
+  view.ox = (cv.width - FIELD.w * s) / 2;
+  view.oy = (cv.height - FIELD.h * s) / 2;
+}
+window.addEventListener("resize", resize);
+
+function toField(clientX, clientY) {
+  const r = cv.getBoundingClientRect();
+  const px = (clientX - r.left) * devicePixelRatio;
+  const py = (clientY - r.top) * devicePixelRatio;
+  return { x: (px - view.ox) / view.scale, y: (py - view.oy) / view.scale };
+}
+
+socket.on("youAre", (d) => {
+  mySide = d.side;
+  show("game");
+  document.getElementById("overlay").classList.remove("active");
+  resize();
+  requestAnimationFrame(render);
+});
+
+socket.on("thrown", (d) => {
+  lastThrow = { ...d, age: 0 };
+});
+socket.on("state", (s) => {
+  state = s;
+  document.getElementById("speedPill").textContent = "🐷 " + s.pigSpeed;
+  document.getElementById("timePill").textContent = s.elapsed + "s";
+  const haveCard = ownerIsMe();
+  document.getElementById("rolePill").textContent = haveCard ? "Du hast die Karte!" : "Gegner hat die Karte";
+  document.getElementById("hint").textContent = haveCard
+    ? "Ziehe & lass los, um die Karte gekurvt zu werfen"
+    : "Warte auf den Wurf des Gegners…";
+});
+
+// The server identifies the card owner by socket id; we own it when that
+// matches our own connection id.
+function ownerIsMe() {
+  return state.card.owner === socket.id;
+}
+
+socket.on("gameOver", (d) => {
+  const ov = document.getElementById("overlay");
+  document.getElementById("overTitle").textContent = d.result === "win" ? "Gewonnen! 🎉" : "Verloren! 🐷";
+  document.getElementById("overSub").textContent = `Überlebt: ${d.survived}s`;
+  ov.classList.add("active");
+});
+socket.on("opponentLeft", () => {
+  const ov = document.getElementById("overlay");
+  document.getElementById("overTitle").textContent = "Gegner hat verlassen";
+  document.getElementById("overSub").textContent = "";
+  ov.classList.add("active");
+});
+document.getElementById("againBtn").onclick = () => { show("lobby"); location.reload(); };
+
+// ---- Input: drag to aim a curved throw ------------------------------------
+let dragging = false;
+function pointerDown(e) {
+  if (!ownerIsMe() || state.card.inFlight) return;
+  dragging = true;
+  updateAim(e);
+}
+function pointerMove(e) { if (dragging) updateAim(e); }
+function pointerUp() {
+  if (dragging && myControl) {
+    socket.emit("throw", myControl);
+  }
+  dragging = false;
+  myControl = null;
+}
+function updateAim(e) {
+  const t = e.touches ? e.touches[0] : e;
+  myControl = toField(t.clientX, t.clientY);
+  if (e.cancelable) e.preventDefault();
+}
+cv.addEventListener("mousedown", pointerDown);
+cv.addEventListener("mousemove", pointerMove);
+window.addEventListener("mouseup", pointerUp);
+cv.addEventListener("touchstart", pointerDown, { passive: false });
+cv.addEventListener("touchmove", pointerMove, { passive: false });
+cv.addEventListener("touchend", pointerUp);
+
+// ---- Rendering ------------------------------------------------------------
+function fx(x) { return view.ox + x * view.scale; }
+function fy(y) { return view.oy + y * view.scale; }
+function fs(v) { return v * view.scale; }
+
+function drawStick(p, color, mirror) {
+  ctx.strokeStyle = color; ctx.lineWidth = fs(4); ctx.lineCap = "round";
+  const x = fx(p.x), y = fy(p.y);
+  // head
+  ctx.beginPath(); ctx.arc(x, y - fs(40), fs(18), 0, Math.PI * 2); ctx.stroke();
+  // body
+  ctx.beginPath(); ctx.moveTo(x, y - fs(22)); ctx.lineTo(x, y + fs(20)); ctx.stroke();
+  // legs
+  ctx.beginPath();
+  ctx.moveTo(x, y + fs(20)); ctx.lineTo(x - fs(16), y + fs(48));
+  ctx.moveTo(x, y + fs(20)); ctx.lineTo(x + fs(16), y + fs(48));
+  ctx.stroke();
+}
+
+function quad(p0, c, p1, t) {
+  const u = 1 - t;
+  return { x: u*u*p0.x + 2*u*t*c.x + t*t*p1.x, y: u*u*p0.y + 2*u*t*c.y + t*t*p1.y };
+}
+
+function render() {
+  resizeIfNeeded();
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  // field
+  ctx.fillStyle = "#cdd6db"; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = "#bcc7cd";
+  ctx.fillRect(fx(0), fy(0), fs(FIELD.w), fs(FIELD.h));
+
+  // players
+  drawStick(PLAYER_L, "#1e2a30");
+  drawStick(PLAYER_R, "#1e2a30");
+
+  // aim preview (curved throw)
+  if (ownerIsMe() && !state.card.inFlight && myControl) {
+    const from = mySide === "left" ? PLAYER_L : PLAYER_R;
+    const to = mySide === "left" ? PLAYER_R : PLAYER_L;
+    ctx.strokeStyle = "#e8413a"; ctx.lineWidth = fs(5); ctx.setLineDash([fs(10), fs(10)]);
+    ctx.beginPath();
+    for (let i = 0; i <= 30; i++) {
+      const p = quad(from, myControl, to, i / 30);
+      i === 0 ? ctx.moveTo(fx(p.x), fy(p.y)) : ctx.lineTo(fx(p.x), fy(p.y));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // recent throw trail
+  if (lastThrow) {
+    lastThrow.age += 1;
+    ctx.strokeStyle = "#e8413a88"; ctx.lineWidth = fs(4);
+    ctx.beginPath();
+    for (let i = 0; i <= 30; i++) {
+      const p = quad(lastThrow.from, lastThrow.c, lastThrow.to, i / 30);
+      i === 0 ? ctx.moveTo(fx(p.x), fy(p.y)) : ctx.lineTo(fx(p.x), fy(p.y));
+    }
+    ctx.stroke();
+    if (lastThrow.age > 60) lastThrow = null;
+  }
+
+  // pig
+  const pg = state.pig;
+  ctx.font = `${fs(46)}px serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("🐷", fx(pg.x), fy(pg.y));
+
+  // card
+  const cd = state.card;
+  ctx.save();
+  ctx.translate(fx(cd.x), fy(cd.y));
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = "#1e2a30"; ctx.lineWidth = fs(2);
+  ctx.beginPath();
+  const cw = fs(26), ch = fs(36);
+  ctx.rect(-cw/2, -ch/2, cw, ch); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#e8413a"; ctx.font = `${fs(20)}px serif`;
+  ctx.fillText("♦", 0, 0);
+  ctx.restore();
+
+  requestAnimationFrame(render);
+}
+
+let lastW = 0, lastH = 0;
+function resizeIfNeeded() {
+  if (cv.clientWidth !== lastW || cv.clientHeight !== lastH) {
+    lastW = cv.clientWidth; lastH = cv.clientHeight; resize();
+  }
+}
+</script>
+</body>
+</html>

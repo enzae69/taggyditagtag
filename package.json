@@ -1,0 +1,14 @@
+{
+  "name": "taggytag",
+  "version": "1.0.0",
+  "description": "TaggyTag - multiplayer monkey-in-the-middle card throwing game with curved throws and an ever-faster pig",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
