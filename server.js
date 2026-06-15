@@ -13,20 +13,21 @@ const httpServer = createServer(app);
 const io = new Server(httpServer);
 
 // ---------------------------------------------------------------------------
-// Field / gameplay constants (virtual coordinates, the client scales these)
+// 3D world / gameplay constants (world units; the client uses Three.js)
 // ---------------------------------------------------------------------------
-const FIELD = { w: 1000, h: 600 };
-const PLAYER_L = { x: 110, y: 300 };
-const PLAYER_R = { x: 890, y: 300 };
-const PIG_START = { x: 500, y: 300 };
+const WORLD_HALF = 22;                 // arena is 44 x 44 on the ground (x,z)
+const START_L = { x: 0, y: 0, z: -16 };
+const START_R = { x: 0, y: 0, z: 16 };
+const PIG_START = { x: 0, y: 1.2, z: 0 };
 
-const TICK_MS = 1000 / 30;           // 30 ticks per second
-const CARD_SPEED = 900;              // virtual units per second along the throw path
-const PIG_BASE_SPEED = 90;           // pig speed at the start of a round
-const PIG_ACCEL = 28;                // extra units/sec added to pig speed every second
-const HIT_RADIUS = 34;               // pig <-> card collision distance
+const TICK_MS = 1000 / 30;
+const CARD_SPEED = 16;                 // units/sec along the drawn path
+const CARD_REST_Y = 1.4;               // height the card floats at a player
+const ARC_HEIGHT = 4;                  // how high the thrown card arcs
+const PIG_BASE_SPEED = 3.2;            // pig speed at round start
+const PIG_ACCEL = 0.95;                // extra units/sec added per second
+const HIT_RADIUS = 1.7;                // pig <-> card catch distance
 
-// The "servers" players can join (like region servers in a real game).
 const SERVER_NAMES = ["EU 1", "EU 2", "EU 3", "EU 4"];
 
 /** @type {Map<string, {name:string, queue:string[], games:Map<string,Game>}>} */
@@ -38,65 +39,41 @@ for (const name of SERVER_NAMES) {
 function lobbyInfo() {
   return SERVER_NAMES.map((name) => {
     const s = servers.get(name);
-    return {
-      name,
-      waiting: s.queue.length,
-      players: s.queue.length + s.games.size * 2,
-    };
+    return { name, waiting: s.queue.length, players: s.queue.length + s.games.size * 2 };
   });
 }
 
-// ---------------------------------------------------------------------------
-// Geometry helpers
-// ---------------------------------------------------------------------------
-function quadBezier(p0, c, p1, t) {
-  const u = 1 - t;
-  return {
-    x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x,
-    y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y,
-  };
-}
-
-// Rough length of a quadratic bezier by sampling.
-function bezierLength(p0, c, p1) {
-  let len = 0;
-  let prev = p0;
-  for (let i = 1; i <= 16; i++) {
-    const pt = quadBezier(p0, c, p1, i / 16);
-    len += Math.hypot(pt.x - prev.x, pt.y - prev.y);
-    prev = pt;
-  }
-  return len;
-}
-
-function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(hi, v));
-}
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
 // ---------------------------------------------------------------------------
-// Game room: authoritative simulation of one match (2 players + AI pig)
+// Game room: authoritative pig + card; players move client-side and report pos
 // ---------------------------------------------------------------------------
 class Game {
   constructor(serverName, players) {
     this.serverName = serverName;
     this.id = `${serverName}-${Date.now()}`;
-    this.players = players; // [socketId, socketId]
+    this.players = players;
     this.slots = {
-      [players[0]]: { side: "left", pos: PLAYER_L },
-      [players[1]]: { side: "right", pos: PLAYER_R },
+      [players[0]]: { side: "left", start: START_L },
+      [players[1]]: { side: "right", start: START_R },
+    };
+    // Last reported position of each player (client-authoritative movement).
+    this.pos = {
+      [players[0]]: { ...START_L },
+      [players[1]]: { ...START_R },
     };
 
-    this.pig = { x: PIG_START.x, y: PIG_START.y };
+    this.pig = { ...PIG_START };
     this.pigSpeed = PIG_BASE_SPEED;
     this.roundStart = Date.now();
 
-    // The card always belongs to one player. owner = socketId who must throw it.
     this.card = {
       owner: players[0],
-      pos: { ...PLAYER_L },
+      pos: { x: START_L.x, y: CARD_REST_Y, z: START_L.z },
       inFlight: false,
-      path: null, // {p0, c, p1, len}
-      dist: 0,    // distance travelled along path
+      path: null,   // { pts:[{x,z}], cum:[], total }
+      dist: 0,
     };
 
     this.over = false;
@@ -104,51 +81,76 @@ class Game {
 
     for (const id of players) {
       const sock = io.sockets.sockets.get(id);
-      if (sock) sock.join(this.id);
-    }
-
-    this.broadcast("matchStart", {
-      slots: Object.fromEntries(
-        Object.entries(this.slots).map(([id, s]) => [id, s.side])
-      ),
-      you: null, // filled per-socket below
-      field: FIELD,
-    });
-    // Tell each player which side they are.
-    for (const id of players) {
-      const sock = io.sockets.sockets.get(id);
-      if (sock) sock.emit("youAre", { side: this.slots[id].side, owner: this.card.owner });
+      if (sock) {
+        sock.join(this.id);
+        sock.emit("youAre", {
+          side: this.slots[id].side,
+          start: this.slots[id].start,
+          owner: this.card.owner,
+          world: WORLD_HALF,
+        });
+      }
     }
 
     this.loop = setInterval(() => this.tick(), TICK_MS);
   }
 
-  broadcast(event, data) {
-    io.to(this.id).emit(event, data);
-  }
+  broadcast(event, data) { io.to(this.id).emit(event, data); }
+  otherPlayer(id) { return this.players[0] === id ? this.players[1] : this.players[0]; }
 
-  otherPlayer(id) {
-    return this.players[0] === id ? this.players[1] : this.players[0];
-  }
-
-  // A player throws the card with a curve defined by a control point.
-  throwCard(socketId, control) {
-    if (this.over || this.card.inFlight) return;
-    if (this.card.owner !== socketId) return; // only the holder may throw
-
-    const from = this.slots[socketId].pos;
-    const to = this.slots[this.otherPlayer(socketId)].pos;
-    const c = {
-      x: clamp(control.x, 0, FIELD.w),
-      y: clamp(control.y, 0, FIELD.h),
+  setPos(id, p) {
+    if (!this.pos[id]) return;
+    this.pos[id] = {
+      x: clamp(p.x, -WORLD_HALF, WORLD_HALF),
+      y: clamp(p.y, 0, 12),
+      z: clamp(p.z, -WORLD_HALF, WORLD_HALF),
     };
-    const path = { p0: { ...from }, c, p1: { ...to } };
-    path.len = bezierLength(path.p0, path.c, path.p1);
+  }
 
-    this.card.inFlight = true;
-    this.card.path = path;
+  // A player throws by drawing a path of ground points {x,z}.
+  throwCard(socketId, rawPts) {
+    if (this.over || this.card.inFlight) return;
+    if (this.card.owner !== socketId) return;
+    if (!Array.isArray(rawPts) || rawPts.length < 2) return;
+
+    // Start the path at the thrower, then follow the drawn ground points.
+    const here = this.pos[socketId];
+    const pts = [{ x: here.x, z: here.z }];
+    for (const p of rawPts) {
+      if (typeof p.x !== "number" || typeof p.z !== "number") continue;
+      pts.push({ x: clamp(p.x, -WORLD_HALF, WORLD_HALF), z: clamp(p.z, -WORLD_HALF, WORLD_HALF) });
+    }
+    if (pts.length < 2) return;
+
+    const cum = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+      cum.push(total);
+    }
+    if (total < 1) return;
+
+    this.card.path = { pts, cum, total };
     this.card.dist = 0;
-    this.broadcast("thrown", { from, c, to, owner: socketId });
+    this.card.inFlight = true;
+    this.broadcast("thrown", { path: pts, owner: socketId });
+  }
+
+  cardPointAt(dist) {
+    const { pts, cum, total } = this.card.path;
+    const d = clamp(dist, 0, total);
+    let i = 1;
+    while (i < cum.length && cum[i] < d) i++;
+    const segStart = cum[i - 1];
+    const segLen = cum[i] - segStart || 1;
+    const t = (d - segStart) / segLen;
+    const a = pts[i - 1], b = pts[i];
+    const frac = d / total;
+    return {
+      x: a.x + (b.x - a.x) * t,
+      y: CARD_REST_Y + Math.sin(frac * Math.PI) * ARC_HEIGHT,
+      z: a.z + (b.z - a.z) * t,
+    };
   }
 
   tick() {
@@ -157,55 +159,44 @@ class Game {
     this.lastTick = now;
     if (this.over) return;
 
-    // Pig accelerates with elapsed round time.
     const elapsed = (now - this.roundStart) / 1000;
     this.pigSpeed = PIG_BASE_SPEED + PIG_ACCEL * elapsed;
 
-    // Advance the card if it is flying.
     if (this.card.inFlight && this.card.path) {
       this.card.dist += CARD_SPEED * dt;
-      const t = clamp(this.card.dist / this.card.path.len, 0, 1);
-      this.card.pos = quadBezier(
-        this.card.path.p0,
-        this.card.path.c,
-        this.card.path.p1,
-        t
-      );
-      if (t >= 1) {
-        // Caught by the receiver: possession changes, they must throw next.
+      if (this.card.dist >= this.card.path.total) {
+        // Landed: possession passes to the other player.
         this.card.inFlight = false;
-        this.card.owner = this.otherPlayer(this.card.owner);
-        this.card.pos = { ...this.slots[this.card.owner].pos };
         this.card.path = null;
+        this.card.owner = this.otherPlayer(this.card.owner);
+      } else {
+        this.card.pos = this.cardPointAt(this.card.dist);
       }
-    } else {
-      // Resting in the owner's hand.
-      this.card.pos = { ...this.slots[this.card.owner].pos };
+    }
+    if (!this.card.inFlight) {
+      const o = this.pos[this.card.owner];
+      this.card.pos = { x: o.x, y: o.y + CARD_REST_Y, z: o.z };
     }
 
-    // Pig chases the card.
+    // Pig chases the card in 3D and accelerates.
     const dx = this.card.pos.x - this.pig.x;
     const dy = this.card.pos.y - this.pig.y;
-    const d = Math.hypot(dx, dy) || 1;
+    const dz = this.card.pos.z - this.pig.z;
+    const d = Math.hypot(dx, dy, dz) || 1;
     const step = this.pigSpeed * dt;
     this.pig.x += (dx / d) * step;
     this.pig.y += (dy / d) * step;
+    this.pig.z += (dz / d) * step;
 
-    // Collision: the player holding/last-throwing the card loses.
-    if (d < HIT_RADIUS) {
-      this.end(this.card.owner);
-      return;
-    }
+    if (d < HIT_RADIUS) { this.end(this.card.owner); return; }
 
+    const round = (v) => Math.round(v * 100) / 100;
+    const rp = (p) => ({ x: round(p.x), y: round(p.y), z: round(p.z) });
     this.broadcast("state", {
-      pig: { x: Math.round(this.pig.x), y: Math.round(this.pig.y) },
-      card: {
-        x: Math.round(this.card.pos.x),
-        y: Math.round(this.card.pos.y),
-        inFlight: this.card.inFlight,
-        owner: this.card.owner,
-      },
-      pigSpeed: Math.round(this.pigSpeed),
+      players: Object.fromEntries(Object.entries(this.pos).map(([id, p]) => [id, rp(p)])),
+      pig: rp(this.pig),
+      card: { ...rp(this.card.pos), owner: this.card.owner, inFlight: this.card.inFlight },
+      pigSpeed: Math.round(this.pigSpeed * 10) / 10,
       elapsed: Math.round(elapsed),
     });
   }
@@ -217,42 +208,34 @@ class Game {
     const winnerId = this.otherPlayer(loserId);
     for (const id of this.players) {
       const sock = io.sockets.sockets.get(id);
-      if (sock) {
-        sock.emit("gameOver", {
-          result: id === winnerId ? "win" : "lose",
-          survived: Math.round((Date.now() - this.roundStart) / 1000),
-        });
-      }
+      if (sock) sock.emit("gameOver", {
+        result: id === winnerId ? "win" : "lose",
+        survived: Math.round((Date.now() - this.roundStart) / 1000),
+      });
     }
     servers.get(this.serverName).games.delete(this.id);
   }
 
-  // A player left mid-game.
   abandon(leaverId) {
     if (this.over) return;
     this.over = true;
     clearInterval(this.loop);
-    const other = this.otherPlayer(leaverId);
-    const sock = io.sockets.sockets.get(other);
+    const sock = io.sockets.sockets.get(this.otherPlayer(leaverId));
     if (sock) sock.emit("opponentLeft");
     servers.get(this.serverName).games.delete(this.id);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Matchmaking: 2 players in a server's queue start a game.
+// Matchmaking
 // ---------------------------------------------------------------------------
 function tryMatch(serverName) {
   const s = servers.get(serverName);
   while (s.queue.length >= 2) {
     const a = s.queue.shift();
     const b = s.queue.shift();
-    // Skip disconnected sockets.
     if (!io.sockets.sockets.get(a)) continue;
-    if (!io.sockets.sockets.get(b)) {
-      if (io.sockets.sockets.get(a)) s.queue.unshift(a);
-      continue;
-    }
+    if (!io.sockets.sockets.get(b)) { if (io.sockets.sockets.get(a)) s.queue.unshift(a); continue; }
     const game = new Game(serverName, [a, b]);
     s.games.set(game.id, game);
     sockState.get(a).game = game;
@@ -285,24 +268,25 @@ io.on("connection", (socket) => {
       const i = q.indexOf(socket.id);
       if (i >= 0) q.splice(i, 1);
       st.server = null;
-      socket.emit("lobby", lobbyInfo());
       io.emit("lobby", lobbyInfo());
     }
   });
 
-  socket.on("throw", (control) => {
+  socket.on("move", (p) => {
     const st = sockState.get(socket.id);
-    if (st.game && control && typeof control.x === "number") {
-      st.game.throwCard(socket.id, control);
-    }
+    if (st.game && p && typeof p.x === "number") st.game.setPos(socket.id, p);
+  });
+
+  socket.on("throw", (path) => {
+    const st = sockState.get(socket.id);
+    if (st.game) st.game.throwCard(socket.id, path);
   });
 
   socket.on("disconnect", () => {
     const st = sockState.get(socket.id);
     if (!st) return;
-    if (st.game) {
-      st.game.abandon(socket.id);
-    } else if (st.server) {
+    if (st.game) st.game.abandon(socket.id);
+    else if (st.server) {
       const q = servers.get(st.server).queue;
       const i = q.indexOf(socket.id);
       if (i >= 0) q.splice(i, 1);
@@ -313,6 +297,4 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  console.log(`TaggyTag server running on http://localhost:${PORT}`);
-});
+httpServer.listen(PORT, () => console.log(`TaggyTag server running on http://localhost:${PORT}`));

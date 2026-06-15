@@ -2,97 +2,100 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>TaggyTag</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>TaggyTag 3D</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; }
   body {
     font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    background: #cdd6db;
-    color: #1e2a30;
-    display: flex; align-items: center; justify-content: center;
+    background: #aab7bf; color: #1e2a30;
     user-select: none; -webkit-user-select: none;
-    /* iOS Safari: echte sichtbare Höhe, kein Gummiband-Scroll */
-    position: fixed; inset: 0;
-    height: 100vh; height: 100dvh;
+    position: fixed; inset: 0; height: 100vh; height: 100dvh;
     overscroll-behavior: none;
   }
-  .screen { display: none; width: 100%; height: 100%; }
+  .screen { display: none; position: absolute; inset: 0; }
   .screen.active { display: flex; }
 
   /* Lobby */
-  #lobby { flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 20px; }
-  h1 { font-size: 44px; margin: 0 0 4px; letter-spacing: 2px; }
-  .subtitle { opacity: .7; margin: 0 0 14px; text-align: center; max-width: 460px; }
-  .servers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: 100%; max-width: 460px; }
-  .server-btn {
-    background: #fff; border: 2px solid #1e2a30; border-radius: 14px;
-    padding: 18px; font-size: 20px; font-weight: 700; cursor: pointer;
-    display: flex; flex-direction: column; gap: 4px; transition: transform .08s;
-  }
+  #lobby { flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 20px; text-align: center; }
+  h1 { font-size: 42px; margin: 0; letter-spacing: 2px; }
+  .subtitle { opacity: .75; margin: 0 0 8px; max-width: 460px; }
+  .servers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 440px; }
+  .server-btn { background: #fff; border: 2px solid #1e2a30; border-radius: 14px; padding: 16px;
+    font-size: 19px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
   .server-btn:active { transform: scale(.96); }
-  .server-btn small { font-weight: 400; opacity: .6; font-size: 13px; }
+  .server-btn small { font-weight: 400; opacity: .6; font-size: 12px; }
 
   /* Waiting */
   #waiting { flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
-  .spinner {
-    width: 46px; height: 46px; border: 5px solid #1e2a3033; border-top-color: #e8413a;
-    border-radius: 50%; animation: spin 1s linear infinite;
-  }
+  .spinner { width: 46px; height: 46px; border: 5px solid #1e2a3033; border-top-color: #e8413a;
+    border-radius: 50%; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  button.ghost {
-    background: none; border: 2px solid #1e2a30; border-radius: 10px;
-    padding: 10px 18px; font-size: 15px; cursor: pointer;
-  }
+  button.ghost { background: none; border: 2px solid #1e2a30; border-radius: 10px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
 
   /* Game */
-  #game { position: relative; }
-  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-  #hud {
-    position: absolute; top: 10px; left: 0; right: 0; display: flex;
-    justify-content: space-between; padding: 0 16px; font-weight: 700; pointer-events: none;
-  }
-  #hud .pill { background: #ffffffcc; border-radius: 999px; padding: 6px 12px; font-size: 14px; }
-  #hint {
-    position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
-    font-size: 15px; opacity: .8; pointer-events: none;
-  }
+  #game { }
+  #glcanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #drawcanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; touch-action: none; }
+  #drawcanvas.on { pointer-events: auto; }
 
-  /* Overlay (game over) */
-  #overlay { position: absolute; inset: 0; background: #cdd6dbee; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px; display: none; }
+  #hud { position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 0; right: 0;
+    display: flex; justify-content: center; gap: 8px; pointer-events: none; flex-wrap: wrap; padding: 0 10px; }
+  #hud .pill { background: #ffffffd0; border-radius: 999px; padding: 5px 11px; font-size: 13px; font-weight: 700; }
+
+  /* Joystick */
+  #stick { position: absolute; left: calc(20px + env(safe-area-inset-left)); bottom: calc(28px + env(safe-area-inset-bottom));
+    width: 130px; height: 130px; border-radius: 50%; background: #ffffff44; border: 2px solid #ffffff88; touch-action: none; }
+  #knob { position: absolute; left: 35px; top: 35px; width: 60px; height: 60px; border-radius: 50%; background: #1e2a30cc; }
+
+  /* Right side buttons */
+  .rbtn { position: absolute; right: calc(22px + env(safe-area-inset-right)); width: 84px; height: 84px; border-radius: 50%;
+    border: 2px solid #1e2a30; background: #ffffffcc; font-size: 14px; font-weight: 800; cursor: pointer; touch-action: none; }
+  #jumpBtn { bottom: calc(30px + env(safe-area-inset-bottom)); }
+  #drawBtn { bottom: calc(128px + env(safe-area-inset-bottom)); background: #e8413a; color: #fff; display: none; }
+  #drawBtn.armed { background: #1e2a30; }
+  .rbtn:active { transform: scale(.93); }
+
+  #drawHint { position: absolute; top: 50%; left: 0; right: 0; text-align: center; font-weight: 800;
+    font-size: 18px; color: #e8413a; pointer-events: none; display: none; text-shadow: 0 1px 2px #fff; }
+
+  /* Overlay */
+  #overlay { position: absolute; inset: 0; background: #aab7bfe8; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; display: none; }
   #overlay.active { display: flex; }
-  #overlay h2 { font-size: 40px; margin: 0; }
+  #overlay h2 { font-size: 38px; margin: 0; }
 </style>
 </head>
 <body>
 
-<!-- LOBBY -->
 <div id="lobby" class="screen active">
-  <h1>TAGGYTAG</h1>
-  <p class="subtitle">Schweinchen in der Mitte. Wirf die Karte gekurvt zum Gegner &mdash;
-    aber das Schweinchen wird jede Sekunde schneller. Wen es mit der Karte erwischt, der verliert.</p>
+  <h1>TAGGYTAG 3D</h1>
+  <p class="subtitle">Bewege dich mit dem Joystick, schau dich per Wischen um, springe &mdash; und
+    <b>zeichne</b> mit dem Finger die Flugkurve deines Wurfs. Das Schweinchen 🐷 wird jede Sekunde
+    schneller. Wen es mit der Karte erwischt, verliert.</p>
   <strong>Server wählen</strong>
   <div class="servers" id="servers"></div>
 </div>
 
-<!-- WAITING -->
 <div id="waiting" class="screen">
   <div class="spinner"></div>
   <div id="waitText">Warte auf einen zweiten Spieler…</div>
   <button class="ghost" id="cancelBtn">Abbrechen</button>
 </div>
 
-<!-- GAME -->
 <div id="game" class="screen">
-  <canvas id="cv"></canvas>
+  <canvas id="glcanvas"></canvas>
+  <canvas id="drawcanvas"></canvas>
   <div id="hud">
     <span class="pill" id="rolePill">…</span>
     <span class="pill" id="speedPill">🐷 0</span>
     <span class="pill" id="timePill">0s</span>
   </div>
-  <div id="hint"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <button class="rbtn" id="jumpBtn">JUMP</button>
+  <button class="rbtn" id="drawBtn">WURF<br>zeichnen</button>
+  <div id="drawHint">Zeichne die Flugkurve! ✏️</div>
   <div id="overlay">
     <h2 id="overTitle"></h2>
     <div id="overSub"></div>
@@ -100,231 +103,292 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
+const screens = { lobby: lobby, waiting: waiting, game: game };
+function show(name){ for(const k in screens) screens[k].classList.toggle("active", k===name); }
 
-const screens = {
-  lobby: document.getElementById("lobby"),
-  waiting: document.getElementById("waiting"),
-  game: document.getElementById("game"),
-};
-function show(name) {
-  for (const k in screens) screens[k].classList.toggle("active", k === name);
-}
-
-// ---- Lobby ----------------------------------------------------------------
-const serversEl = document.getElementById("servers");
+// ---- Lobby / waiting ------------------------------------------------------
 socket.on("lobby", (list) => {
-  serversEl.innerHTML = "";
+  const el = document.getElementById("servers"); el.innerHTML = "";
   for (const s of list) {
     const b = document.createElement("button");
     b.className = "server-btn";
     b.innerHTML = `${s.name}<small>${s.players} online · ${s.waiting} warten</small>`;
     b.onclick = () => socket.emit("joinServer", s.name);
-    serversEl.appendChild(b);
+    el.appendChild(b);
   }
 });
+socket.on("waiting", (d) => { document.getElementById("waitText").textContent =
+  `Server ${d.server} · warte auf einen zweiten Spieler…`; show("waiting"); });
+document.getElementById("cancelBtn").onclick = () => { socket.emit("leaveQueue"); show("lobby"); };
 
-socket.on("waiting", (d) => {
-  document.getElementById("waitText").textContent =
-    `Server ${d.server} · warte auf einen zweiten Spieler…`;
-  show("waiting");
-});
-document.getElementById("cancelBtn").onclick = () => {
-  socket.emit("leaveQueue");
-  show("lobby");
-};
-
-// ---- Game state -----------------------------------------------------------
-const cv = document.getElementById("cv");
-const ctx = cv.getContext("2d");
-const FIELD = { w: 1000, h: 600 };
-let view = { scale: 1, ox: 0, oy: 0 };
+// ===========================================================================
+// 3D game
+// ===========================================================================
+let WORLD = 22;
 let mySide = null;
-let myId = null;
-let state = { pig: { x: 500, y: 300 }, card: { x: 110, y: 300, owner: null, inFlight: false }, pigSpeed: 0, elapsed: 0 };
-let lastThrow = null; // {from,c,to,owner,age}
-const PLAYER_L = { x: 110, y: 300 };
-const PLAYER_R = { x: 890, y: 300 };
-let myControl = null; // current aim while dragging
+let scene, camera, renderer, ground, groundPlane;
+let me, foe, pig, card;
+const others = {}; // id -> mesh (foe)
+let started = false;
 
-function resize() {
-  cv.width = cv.clientWidth * devicePixelRatio;
-  cv.height = cv.clientHeight * devicePixelRatio;
-  const s = Math.min(cv.width / FIELD.w, cv.height / FIELD.h);
-  view.scale = s;
-  view.ox = (cv.width - FIELD.w * s) / 2;
-  view.oy = (cv.height - FIELD.h * s) / 2;
+// local player physics
+const player = { x: 0, y: 0, z: -16, vy: 0, onGround: true };
+let yaw = 0, pitch = 0.35;           // camera orientation
+const GRAVITY = 22, JUMP_V = 9, MOVE_SPEED = 8;
+let serverState = null;
+
+function makePerson(color){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.45,1.4,12),
+    new THREE.MeshStandardMaterial({color}));
+  body.position.y = 1.1; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.45,16,16),
+    new THREE.MeshStandardMaterial({color:0xffe0bd}));
+  head.position.y = 2.1; g.add(head);
+  return g;
 }
-window.addEventListener("resize", resize);
+function makePig(){
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.85,18,18),
+    new THREE.MeshStandardMaterial({color:0xf48fb1}));
+  g.add(b);
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.25,12),
+    new THREE.MeshStandardMaterial({color:0xec6a98}));
+  snout.rotation.x = Math.PI/2; snout.position.set(0,0,0.85); g.add(snout);
+  for (const sx of [-0.35,0.35]){
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.22,0.4,8),
+      new THREE.MeshStandardMaterial({color:0xf48fb1}));
+    ear.position.set(sx,0.8,0.1); g.add(ear);
+  }
+  return g;
+}
+function makeCard(){
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.7,1.0,0.06),
+    new THREE.MeshStandardMaterial({color:0xffffff}));
+  g.add(m);
+  return g;
+}
 
-function toField(clientX, clientY) {
-  const r = cv.getBoundingClientRect();
-  const px = (clientX - r.left) * devicePixelRatio;
-  const py = (clientY - r.top) * devicePixelRatio;
-  return { x: (px - view.ox) / view.scale, y: (py - view.oy) / view.scale };
+function initThree(){
+  const cv = document.getElementById("glcanvas");
+  renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xaab7bf);
+  scene.fog = new THREE.Fog(0xaab7bf, 35, 70);
+  camera = new THREE.PerspectiveCamera(70, 1, 0.1, 200);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+  sun.position.set(10,20,8); scene.add(sun);
+
+  ground = new THREE.Mesh(new THREE.PlaneGeometry(WORLD*2, WORLD*2),
+    new THREE.MeshStandardMaterial({color:0x8fa3ac}));
+  ground.rotation.x = -Math.PI/2; scene.add(ground);
+  // grid lines
+  const grid = new THREE.GridHelper(WORLD*2, 22, 0x6f828b, 0x7d909a);
+  scene.add(grid);
+  groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+
+  me = makePerson(0x2f6fd0); scene.add(me);
+  foe = makePerson(0xe8413a); scene.add(foe);
+  pig = makePig(); scene.add(pig);
+  card = makeCard(); scene.add(card);
 }
 
 socket.on("youAre", (d) => {
-  mySide = d.side;
-  show("game");
+  mySide = d.side; WORLD = d.world || 22;
+  player.x = d.start.x; player.y = 0; player.z = d.start.z;
+  player.vy = 0; player.onGround = true;
+  yaw = mySide === "left" ? 0 : Math.PI; pitch = 0.35;
+  if (!scene) initThree();
   document.getElementById("overlay").classList.remove("active");
+  show("game");
   resize();
-  requestAnimationFrame(render);
+  if (!started){ started = true; lastT = performance.now(); requestAnimationFrame(loop); }
 });
 
-socket.on("thrown", (d) => {
-  lastThrow = { ...d, age: 0 };
-});
+let drawnPath = null;     // server's last thrown path (for trail), array {x,z}
+socket.on("thrown", (d) => { drawnPath = { pts: d.path, age: 0, owner: d.owner }; });
 socket.on("state", (s) => {
-  state = s;
+  serverState = s;
   document.getElementById("speedPill").textContent = "🐷 " + s.pigSpeed;
   document.getElementById("timePill").textContent = s.elapsed + "s";
-  const haveCard = ownerIsMe();
-  document.getElementById("rolePill").textContent = haveCard ? "Du hast die Karte!" : "Gegner hat die Karte";
-  document.getElementById("hint").textContent = haveCard
-    ? "Ziehe & lass los, um die Karte gekurvt zu werfen"
-    : "Warte auf den Wurf des Gegners…";
+  const mine = s.card.owner === socket.id;
+  document.getElementById("rolePill").textContent = mine ? "Du hast die Karte!" : "Gegner hat die Karte";
+  const db = document.getElementById("drawBtn");
+  db.style.display = (mine && !s.card.inFlight) ? "block" : "none";
 });
-
-// The server identifies the card owner by socket id; we own it when that
-// matches our own connection id.
-function ownerIsMe() {
-  return state.card.owner === socket.id;
-}
-
 socket.on("gameOver", (d) => {
-  const ov = document.getElementById("overlay");
   document.getElementById("overTitle").textContent = d.result === "win" ? "Gewonnen! 🎉" : "Verloren! 🐷";
   document.getElementById("overSub").textContent = `Überlebt: ${d.survived}s`;
-  ov.classList.add("active");
+  document.getElementById("overlay").classList.add("active");
 });
 socket.on("opponentLeft", () => {
-  const ov = document.getElementById("overlay");
   document.getElementById("overTitle").textContent = "Gegner hat verlassen";
   document.getElementById("overSub").textContent = "";
-  ov.classList.add("active");
+  document.getElementById("overlay").classList.add("active");
 });
-document.getElementById("againBtn").onclick = () => { show("lobby"); location.reload(); };
+document.getElementById("againBtn").onclick = () => location.reload();
 
-// ---- Input: drag to aim a curved throw ------------------------------------
-let dragging = false;
-function pointerDown(e) {
-  if (!ownerIsMe() || state.card.inFlight) return;
-  dragging = true;
-  updateAim(e);
+// ---- Controls: joystick, look-drag, jump, draw ----------------------------
+let joyVec = { x: 0, y: 0 }, joyId = null;
+const stick = document.getElementById("stick"), knob = document.getElementById("knob");
+function joyStart(e){ joyId = e.pointerId; stick.setPointerCapture(e.pointerId); joyMove(e); }
+function joyMove(e){
+  if (joyId !== e.pointerId) return;
+  const r = stick.getBoundingClientRect();
+  let dx = e.clientX - (r.left + r.width/2), dy = e.clientY - (r.top + r.height/2);
+  const max = r.width/2, len = Math.hypot(dx,dy);
+  if (len > max){ dx = dx/len*max; dy = dy/len*max; }
+  knob.style.left = (35 + dx) + "px"; knob.style.top = (35 + dy) + "px";
+  joyVec.x = dx/max; joyVec.y = dy/max;
 }
-function pointerMove(e) { if (dragging) updateAim(e); }
-function pointerUp() {
-  if (dragging && myControl) {
-    socket.emit("throw", myControl);
+function joyEnd(e){ if (joyId!==e.pointerId) return; joyId=null; joyVec.x=joyVec.y=0; knob.style.left="35px"; knob.style.top="35px"; }
+stick.addEventListener("pointerdown", joyStart);
+stick.addEventListener("pointermove", joyMove);
+stick.addEventListener("pointerup", joyEnd);
+stick.addEventListener("pointercancel", joyEnd);
+
+// Look: drag on the GL canvas (when not in draw mode)
+let lookId = null, lookX = 0, lookY = 0;
+const gl = document.getElementById("glcanvas");
+gl.addEventListener("pointerdown", (e) => { if (drawMode) return; lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; });
+gl.addEventListener("pointermove", (e) => {
+  if (lookId !== e.pointerId) return;
+  yaw   -= (e.clientX - lookX) * 0.005;
+  pitch -= (e.clientY - lookY) * 0.005;
+  pitch = Math.max(-0.2, Math.min(1.2, pitch));
+  lookX = e.clientX; lookY = e.clientY;
+});
+const lookEnd = (e) => { if (lookId === e.pointerId) lookId = null; };
+gl.addEventListener("pointerup", lookEnd);
+gl.addEventListener("pointercancel", lookEnd);
+
+document.getElementById("jumpBtn").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (player.onGround){ player.vy = JUMP_V; player.onGround = false; }
+});
+
+// Draw mode: arm with the button, then draw the curve on the draw canvas
+let drawMode = false, strokePts = [], drawId = null;
+const dcanvas = document.getElementById("drawcanvas"), dctx = dcanvas.getContext("2d");
+const drawBtn = document.getElementById("drawBtn");
+drawBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  drawMode = !drawMode;
+  dcanvas.classList.toggle("on", drawMode);
+  drawBtn.classList.toggle("armed", drawMode);
+  document.getElementById("drawHint").style.display = drawMode ? "block" : "none";
+  strokePts = []; clearDraw();
+});
+function clearDraw(){ dctx.clearRect(0,0,dcanvas.width,dcanvas.height); }
+dcanvas.addEventListener("pointerdown", (e) => {
+  if (!drawMode) return; drawId = e.pointerId; strokePts = [[e.clientX, e.clientY]];
+});
+dcanvas.addEventListener("pointermove", (e) => {
+  if (drawId !== e.pointerId) return;
+  strokePts.push([e.clientX, e.clientY]);
+  clearDraw();
+  dctx.strokeStyle = "#e8413a"; dctx.lineWidth = 6 * devicePixelRatio; dctx.lineCap = "round"; dctx.lineJoin = "round";
+  dctx.beginPath();
+  for (let i=0;i<strokePts.length;i++){
+    const x = strokePts[i][0]*devicePixelRatio, y = strokePts[i][1]*devicePixelRatio;
+    i===0 ? dctx.moveTo(x,y) : dctx.lineTo(x,y);
   }
-  dragging = false;
-  myControl = null;
-}
-function updateAim(e) {
-  const t = e.touches ? e.touches[0] : e;
-  myControl = toField(t.clientX, t.clientY);
-  if (e.cancelable) e.preventDefault();
-}
-cv.addEventListener("mousedown", pointerDown);
-cv.addEventListener("mousemove", pointerMove);
-window.addEventListener("mouseup", pointerUp);
-cv.addEventListener("touchstart", pointerDown, { passive: false });
-cv.addEventListener("touchmove", pointerMove, { passive: false });
-cv.addEventListener("touchend", pointerUp);
-
-// ---- Rendering ------------------------------------------------------------
-function fx(x) { return view.ox + x * view.scale; }
-function fy(y) { return view.oy + y * view.scale; }
-function fs(v) { return v * view.scale; }
-
-function drawStick(p, color, mirror) {
-  ctx.strokeStyle = color; ctx.lineWidth = fs(4); ctx.lineCap = "round";
-  const x = fx(p.x), y = fy(p.y);
-  // head
-  ctx.beginPath(); ctx.arc(x, y - fs(40), fs(18), 0, Math.PI * 2); ctx.stroke();
-  // body
-  ctx.beginPath(); ctx.moveTo(x, y - fs(22)); ctx.lineTo(x, y + fs(20)); ctx.stroke();
-  // legs
-  ctx.beginPath();
-  ctx.moveTo(x, y + fs(20)); ctx.lineTo(x - fs(16), y + fs(48));
-  ctx.moveTo(x, y + fs(20)); ctx.lineTo(x + fs(16), y + fs(48));
-  ctx.stroke();
-}
-
-function quad(p0, c, p1, t) {
-  const u = 1 - t;
-  return { x: u*u*p0.x + 2*u*t*c.x + t*t*p1.x, y: u*u*p0.y + 2*u*t*c.y + t*t*p1.y };
-}
-
-function render() {
-  resizeIfNeeded();
-  ctx.clearRect(0, 0, cv.width, cv.height);
-
-  // field
-  ctx.fillStyle = "#cdd6db"; ctx.fillRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = "#bcc7cd";
-  ctx.fillRect(fx(0), fy(0), fs(FIELD.w), fs(FIELD.h));
-
-  // players
-  drawStick(PLAYER_L, "#1e2a30");
-  drawStick(PLAYER_R, "#1e2a30");
-
-  // aim preview (curved throw)
-  if (ownerIsMe() && !state.card.inFlight && myControl) {
-    const from = mySide === "left" ? PLAYER_L : PLAYER_R;
-    const to = mySide === "left" ? PLAYER_R : PLAYER_L;
-    ctx.strokeStyle = "#e8413a"; ctx.lineWidth = fs(5); ctx.setLineDash([fs(10), fs(10)]);
-    ctx.beginPath();
-    for (let i = 0; i <= 30; i++) {
-      const p = quad(from, myControl, to, i / 30);
-      i === 0 ? ctx.moveTo(fx(p.x), fy(p.y)) : ctx.lineTo(fx(p.x), fy(p.y));
+  dctx.stroke();
+});
+dcanvas.addEventListener("pointerup", (e) => {
+  if (drawId !== e.pointerId) return; drawId = null;
+  finishStroke();
+});
+function finishStroke(){
+  // Convert the screen stroke into ground points via raycasting.
+  const ray = new THREE.Raycaster();
+  const target = new THREE.Vector3();
+  const out = [];
+  const step = Math.max(1, Math.floor(strokePts.length / 36)); // cap to ~36 pts
+  for (let i=0;i<strokePts.length;i+=step){
+    const [sx,sy] = strokePts[i];
+    const ndc = new THREE.Vector2((sx/window.innerWidth)*2-1, -(sy/window.innerHeight)*2+1);
+    ray.setFromCamera(ndc, camera);
+    if (ray.ray.intersectPlane(groundPlane, target)){
+      out.push({ x: target.x, z: target.z });
     }
-    ctx.stroke(); ctx.setLineDash([]);
   }
+  // leave draw mode regardless
+  drawMode = false; dcanvas.classList.remove("on"); drawBtn.classList.remove("armed");
+  document.getElementById("drawHint").style.display = "none"; clearDraw(); strokePts = [];
+  if (out.length >= 2) socket.emit("throw", out);
+}
 
-  // recent throw trail
-  if (lastThrow) {
-    lastThrow.age += 1;
-    ctx.strokeStyle = "#e8413a88"; ctx.lineWidth = fs(4);
-    ctx.beginPath();
-    for (let i = 0; i <= 30; i++) {
-      const p = quad(lastThrow.from, lastThrow.c, lastThrow.to, i / 30);
-      i === 0 ? ctx.moveTo(fx(p.x), fy(p.y)) : ctx.lineTo(fx(p.x), fy(p.y));
+// ---- Main loop ------------------------------------------------------------
+let lastT = 0, sendAcc = 0;
+function loop(now){
+  const dt = Math.min(0.05, (now - lastT)/1000); lastT = now;
+
+  // movement relative to camera yaw
+  const fwd = { x: Math.sin(yaw), z: Math.cos(yaw) };
+  const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+  // joystick: y up = forward (away from camera)
+  const mvx = right.x*joyVec.x - fwd.x*joyVec.y;
+  const mvz = right.z*joyVec.x - fwd.z*joyVec.y;
+  player.x += mvx * MOVE_SPEED * dt;
+  player.z += mvz * MOVE_SPEED * dt;
+  player.x = Math.max(-WORLD, Math.min(WORLD, player.x));
+  player.z = Math.max(-WORLD, Math.min(WORLD, player.z));
+  // gravity / jump
+  player.vy -= GRAVITY * dt; player.y += player.vy * dt;
+  if (player.y <= 0){ player.y = 0; player.vy = 0; player.onGround = true; }
+
+  // place my mesh + face movement direction
+  me.position.set(player.x, player.y, player.z);
+  if (Math.hypot(mvx,mvz) > 0.01) me.rotation.y = Math.atan2(mvx, mvz);
+
+  // camera follows behind me
+  const camDist = 9, camHeight = 5;
+  const cx = player.x - Math.sin(yaw)*camDist*Math.cos(pitch);
+  const cz = player.z - Math.cos(yaw)*camDist*Math.cos(pitch);
+  const cy = player.y + camHeight + Math.sin(pitch)*camDist;
+  camera.position.set(cx, cy, cz);
+  camera.lookAt(player.x, player.y + 1.5, player.z);
+
+  // apply server state to foe / pig / card
+  if (serverState){
+    const s = serverState;
+    for (const id in s.players){
+      if (id === socket.id) continue;
+      const p = s.players[id];
+      foe.position.set(p.x, p.y, p.z);
     }
-    ctx.stroke();
-    if (lastThrow.age > 60) lastThrow = null;
+    pig.position.set(s.pig.x, s.pig.y, s.pig.z);
+    card.position.set(s.card.x, s.card.y, s.card.z);
+    card.rotation.y += dt * 3;
+    // pig faces the card
+    pig.lookAt(s.card.x, s.pig.y, s.card.z);
   }
 
-  // pig
-  const pg = state.pig;
-  ctx.font = `${fs(46)}px serif`;
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("🐷", fx(pg.x), fy(pg.y));
+  // send my position ~15x/sec
+  sendAcc += dt;
+  if (sendAcc > 0.066){ sendAcc = 0; socket.emit("move", { x:player.x, y:player.y, z:player.z }); }
 
-  // card
-  const cd = state.card;
-  ctx.save();
-  ctx.translate(fx(cd.x), fy(cd.y));
-  ctx.fillStyle = "#fff"; ctx.strokeStyle = "#1e2a30"; ctx.lineWidth = fs(2);
-  ctx.beginPath();
-  const cw = fs(26), ch = fs(36);
-  ctx.rect(-cw/2, -ch/2, cw, ch); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = "#e8413a"; ctx.font = `${fs(20)}px serif`;
-  ctx.fillText("♦", 0, 0);
-  ctx.restore();
-
-  requestAnimationFrame(render);
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
 }
 
-let lastW = 0, lastH = 0;
-function resizeIfNeeded() {
-  if (cv.clientWidth !== lastW || cv.clientHeight !== lastH) {
-    lastW = cv.clientWidth; lastH = cv.clientHeight; resize();
-  }
+function resize(){
+  if (!renderer) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  dcanvas.width = w*devicePixelRatio; dcanvas.height = h*devicePixelRatio;
 }
+window.addEventListener("resize", resize);
 </script>
 </body>
 </html>

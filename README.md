@@ -1,11 +1,19 @@
-# TaggyTag 🐷🃏
+# TaggyTag 3D 🐷🃏
 
-Ein **Multiplayer-only** Browser-Spiel: "Schweinchen in der Mitte" mit gekurvten Kartenwürfen.
+Ein **Multiplayer-only** 3D-Browser-Spiel: "Schweinchen in der Mitte" mit
+**gezeichneten** Kartenwürfen.
 
-Zwei Spieler stehen sich gegenüber und werfen sich eine Karte zu. In der Mitte
-jagt ein Schweinchen 🐷 die Karte — und **wird jede Sekunde schneller**. Wen das
-Schweinchen mit der Karte erwischt, **der verliert**. Du kannst den Wurf
-**kurven** (Touch oder Maus), um das Schweinchen auszutricksen.
+Zwei Spieler bewegen sich frei in einer 3D-Arena und werfen sich eine Karte zu.
+In der Mitte jagt ein Schweinchen 🐷 die Karte — und **wird jede Sekunde
+schneller**. Wen das Schweinchen mit der Karte erwischt, **der verliert**.
+
+## Steuerung
+
+- **Joystick** (links unten): laufen
+- **Wischen** (auf der 3D-Ansicht): Kamera drehen / umschauen
+- **JUMP** (rechts unten): springen
+- **WURF zeichnen** (rechts): antippen, dann mit dem Finger die **Flugkurve**
+  auf den Boden malen und loslassen — die Karte fliegt diese Linie als 3D-Bogen.
 
 ## Brauche ich Firebase / Supabase?
 
