@@ -236,10 +236,13 @@ function makeEye(x, sx){
 }
 function makePerson(color, accent){
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.46,0.9,6,14)
-      : new THREE.CylinderGeometry(0.46,0.46,1.5,16),
+  // rounded body: tapered cylinder (r128 has no CapsuleGeometry)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.5,1.4,18),
     new THREE.MeshStandardMaterial({color, roughness:.55, metalness:.05}));
   body.position.y = 1.15; body.castShadow = true; g.add(body);
+  const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.42,16,16),
+    new THREE.MeshStandardMaterial({color, roughness:.55}));
+  shoulders.position.y = 1.85; shoulders.scale.y = 0.6; shoulders.castShadow = true; g.add(shoulders);
   // belt accent ring
   const belt = new THREE.Mesh(new THREE.TorusGeometry(0.47,0.07,8,18),
     new THREE.MeshStandardMaterial({color:accent, roughness:.4, emissive:accent, emissiveIntensity:.25}));
